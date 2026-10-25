@@ -1,79 +1,54 @@
-# E-Commerce Delivery & Sales Analytics Dashboard
+# E-Commerce Delivery & Sales Analytics — Olist Brazilian E-Commerce Dataset
 
-End-to-end analytics pipeline turning raw e-commerce data into SLA insights, a Power BI dashboard, and a late-delivery prediction model — built on the [Olist Brazilian E-Commerce Dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce).
-
-![Status](https://img.shields.io/badge/status-complete-brightgreen) ![Python](https://img.shields.io/badge/python-3.x-blue) ![SQL](https://img.shields.io/badge/SQL-PostgreSQL%2FMySQL-orange) ![Power BI](https://img.shields.io/badge/Power%20BI-dashboard-yellow) ![License](https://img.shields.io/badge/license-MIT-lightgrey)
-
----
+An end-to-end data project covering data cleaning, SQL feature engineering, a Power BI dashboard, and a machine learning classifier — built on the [Olist Brazilian E-Commerce dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) (100K+ orders, 2016-2018).
 
 ## Overview
 
-This project analyzes 100K+ real e-commerce orders to identify what drives late deliveries and where sellers, regions, and product categories underperform against delivery SLAs. It covers the full analyst workflow: cleaning messy relational data, transforming it with SQL, visualizing it in an interactive dashboard, and layering on a predictive model to flag late-delivery risk before dispatch.
+This project investigates what drives late deliveries on Olist's marketplace, how delivery delay affects customer satisfaction, and whether late-delivery risk can be predicted before dispatch. It moves through four stages: cleaning 9 raw relational tables, loading and modeling them in MySQL, visualizing SLA metrics in Power BI, and training classification models in Python.
 
-## Business Questions Answered
+## Tech Stack
 
-- Which states, sellers, and product categories have the highest late-delivery rates?
-- How strongly does delivery delay correlate with customer review scores?
-- Which sellers are consistently underperforming on delivery SLAs?
-- Can late-delivery risk be predicted at order time, before shipment?
-
-## Dataset
-
-**Source:** [Olist Brazilian E-Commerce Public Dataset](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) (Kaggle)
-
-9 relational tables spanning 100K+ orders:
-`customers`, `geolocation`, `orders`, `order_items`, `products`, `product_category_translation`, `sellers`, `order_payments`, `order_reviews`
+- **Python** (Pandas, NumPy, Scikit-learn) — data cleaning and ML
+- **MySQL 8.0** — relational schema, joins, CTEs, window functions
+- **Power BI** (DAX, M) — dashboard and KPI reporting
+- **Jupyter / Google Colab** — notebooks
 
 ## Pipeline
 
-```
-Raw CSVs (Kaggle)
-   → Pandas: null handling, duplicate key resolution, timestamp standardization
-   → SQL: joins, CTEs, window functions → delivery SLA metrics, delay aggregation
-   → Power BI: dashboard (late-delivery hotspots, review-delay correlation, seller KPIs)
-   → Scikit-learn: Logistic Regression / Random Forest → late-delivery risk prediction
-```
+1. **Data cleaning** (`olist_data_cleaning.ipynb`) — loaded all 9 raw CSVs, resolved missing values, duplicates, and inconsistent delivery timestamps on a per-table basis. Notable fixes: collapsed heavily duplicated geolocation records to one row per zip prefix, corrected two misspelled source columns in the products table, and standardized text/date formatting across tables.
+2. **MySQL schema & load** (`create_tables.sql`, `load_to_mysql.py`) — designed a normalized schema with primary/foreign keys across all 9 tables and loaded the cleaned data via a Python/SQLAlchemy script. Caught and patched a real data-quality issue during load: two legitimate product categories were missing from Olist's own category-translation file, which would otherwise have silently broken the products table's foreign key.
+3. **SQL feature engineering** (`sla_and_reviews.sql`, `materialize_tables.sql`) — built views and materialized tables computing delivery SLA metrics (late-order flagging) by region, seller, and product category, using joins, CTEs, and window functions (`NTILE`). Also engineered a customer RFM (Recency, Frequency, Monetary) segmentation.
+4. **Power BI dashboard** — three-page report (Delay & Reviews, Regional & Seller Hotspots, Category Breakdown) connected live to MySQL, with custom DAX measures (e.g. `Late Rate %`).
+5. **Classification modeling** (`olist_late_delivery_classification.ipynb`) — trained Logistic Regression and Random Forest classifiers to predict late-delivery risk ahead of dispatch, using only features known at order time.
 
-## What Was Done
+## Key Findings
 
-**1. Data Cleaning (Pandas + SQL)**
-Resolved null values, duplicate keys, and inconsistent delivery timestamps across all 9 tables before joining them into an analysis-ready relational structure.
-
-**2. SQL Analysis**
-Used joins, CTEs, and window functions to:
-- Flag orders delivered later than their estimated delivery date
-- Aggregate delay rates by region, seller, and product category
-
-**3. Power BI Dashboard**
-Built an interactive dashboard surfacing:
-- Late-delivery hotspots by state and category
-- Correlation between review scores and delivery delay
-- Seller-level performance KPIs
-
-**4. Predictive Modeling**
-Trained Logistic Regression and Random Forest classifiers on order, seller, and shipping features to predict late-delivery risk ahead of dispatch, enabling proactive SLA monitoring.
+- **Delivery delay strongly predicts customer dissatisfaction.** Average review score drops from 4.29 (on-time/early) to 1.69 (8+ days late); the share of 1-2 star reviews rises from 9.2% to 79.4% over the same range.
+- **Late-delivery rate is concentrated in specific regions and time periods**, not evenly distributed. Northeastern states (AL, MA, PI, CE, SE) show the highest late rates (16-24%), and two sharp seasonal spikes — November 2017 and February-March 2018 — account for a large share of delays, pointing to operational capacity strain during high-volume periods rather than a uniform service problem.
+- **An initial hypothesis was tested and revised**: RFM customer segment appeared to correlate with late-delivery rate, but further analysis showed this was almost entirely confounded with order timing (most Olist customers order only once, so "recency" is effectively a re-statement of which month they ordered in). The real driver is time-based operational strain, not customer value or loyalty — a finding reached by deliberately checking an initial result rather than taking it at face value.
+- **Random Forest outperformed Logistic Regression** for late-delivery classification (AUC 0.766 vs 0.697), trading a small recall decrease (58% vs 63%) for meaningfully better precision (21% vs 14%) on the minority "late" class (~8% of orders). Feature importances independently corroborated the SQL findings: `purchase_month` was the single strongest predictor, with `estimated_delivery_days` and `avg_distance_km` (tying to the regional hotspot finding) close behind.
 
 ## Repository Structure
 
 ```
-├── data/                  # Raw and cleaned datasets (or data-loading scripts, if raw files are excluded)
-├── sql/                   # SQL scripts — cleaning, joins, SLA metric queries
-├── notebooks/             # Pandas cleaning + model training notebooks
-├── dashboard/              # Power BI (.pbix) file and/or exported screenshots
-├── model/                  # Trained model artifacts and evaluation scripts
+├── olist_data_cleaning.ipynb                  # Cleans all 9 raw CSVs
+├── create_tables.sql                          # MySQL schema with PK/FK constraints
+├── load_to_mysql.py                           # Loads cleaned CSVs into MySQL
+├── materialize_tables.sql                     # Indexed feature tables (RFM, delivery features)
+├── sla_and_reviews.sql                        # SLA-by-region/seller/category + review-score link
+├── olist_late_delivery_classification.ipynb   # Logistic Regression / Random Forest models
+├── dashboard.pbix                              # Power BI dashboard (3 pages)
 └── README.md
 ```
 
-## Tech Stack
+## How to Run
 
-Python (Pandas, NumPy, Scikit-learn) · SQL · Power BI · DAX
+1. Download the [raw dataset from Kaggle](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) and run `olist_data_cleaning.ipynb` to produce cleaned CSVs.
+2. Set up a local MySQL 8.0 database, run `create_tables.sql`, then `load_to_mysql.py` (update credentials/paths first) to load the cleaned data.
+3. Run `materialize_tables.sql` and `sla_and_reviews.sql` to build the feature tables and SLA views.
+4. Open `dashboard.pbix` in Power BI Desktop (requires the MySQL Connector/NET driver) and refresh the connection against your local database.
+5. Run `olist_late_delivery_classification.ipynb` (update DB credentials) to reproduce the classification results.
 
-## Future Improvements
+## Data Source
 
-- Extend the prediction model with delivery-carrier-level features
-- Add time-series forecasting for regional delivery volume and delay trends
-- Deploy the classification model behind a simple API for real-time SLA risk scoring
-
-## License
-
-MIT
+[Brazilian E-Commerce Public Dataset by Olist](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce) — Kaggle, public domain.
